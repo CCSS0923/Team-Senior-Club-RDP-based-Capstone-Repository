@@ -1,200 +1,38 @@
 using System.Collections.ObjectModel;
-using System.IO;
-using System.Text;
-using EduStream.Client.Services;
 using EduStream.Core.Common;
-using EduStream.Core.Logging;
-using EduStream.Core.Models;
-using EduStream.Core.Protocols;
-using EduStream.Core.Utils;
 
 namespace EduStream.Client.ViewModels;
 
 /// <summary>
-/// Presents the student dashboard state and wires it to the demo services.
+/// UI 담당자가 클라이언트 화면을 다시 구성할 수 있도록
+/// 임시 동작을 제거하고 최소 스캐폴드만 남긴 ViewModel입니다.
 /// </summary>
 public sealed class ClientViewModel : ObservableObject
 {
-    private readonly InMemoryLogSink _logSink = new();
-    private readonly SessionClient _sessionClient;
-    private readonly ScreenRenderer _screenRenderer;
-    private readonly FileReceiver _fileReceiver;
-    private string _hostAddress = "127.0.0.1";
-    private int _port = 5000;
-    private string _displayName = "StudentDemo";
-    private string _connectionState = "Waiting for connection";
-    private string _renderStatus = "No screen frame has been received yet.";
-    private string _downloadStatus = "Waiting for download";
-    private string _chatInput = "Student question: when is the assignment due?";
-    private bool _isConnected;
+    public string WindowTitle { get; } = "EduStream Client";
 
-    public ClientViewModel()
-    {
-        _sessionClient = new SessionClient(_logSink);
-        _screenRenderer = new ScreenRenderer();
-        _fileReceiver = new FileReceiver();
+    public string HeaderTitle { get; } = "학생 클라이언트 UI 스캐폴드";
 
-        JoinSessionCommand = new RelayCommand(() => _ = JoinSessionAsync(), () => !IsConnected);
-        DisconnectCommand = new RelayCommand(() => _ = DisconnectAsync(), () => IsConnected);
-        SendChatCommand = new RelayCommand(SendChat, () => IsConnected && !string.IsNullOrWhiteSpace(ChatInput));
-        SimulateFileReceiveCommand = new RelayCommand(() => _ = SimulateFileReceiveAsync(), () => IsConnected);
-        SimulateScreenRenderCommand = new RelayCommand(SimulateScreenRender, () => IsConnected);
-    }
+    public string HeaderDescription { get; } =
+        "임시 데모 UI와 테스트 동작을 제거한 기본 화면입니다. " +
+        "UI 담당은 이 브랜치에서 레이아웃과 바인딩 구조를 새로 구성하면 됩니다.";
 
-    public string HostAddress
-    {
-        get => _hostAddress;
-        set => SetProperty(ref _hostAddress, value);
-    }
+    public string StatusSummary { get; } =
+        "현재 이 화면은 기능 테스트용 대시보드가 아니라 UI 재구성용 기본 토대입니다.";
 
-    public int Port
-    {
-        get => _port;
-        set => SetProperty(ref _port, value);
-    }
+    public ObservableCollection<string> LeftPanelNotes { get; } =
+    [
+        "세션 연결 상태 표시",
+        "공유 화면 표시 영역",
+        "파일 다운로드 진행률",
+        "오류 메시지 및 안내 문구"
+    ];
 
-    public string DisplayName
-    {
-        get => _displayName;
-        set => SetProperty(ref _displayName, value);
-    }
-
-    public string ConnectionState
-    {
-        get => _connectionState;
-        private set => SetProperty(ref _connectionState, value);
-    }
-
-    public string RenderStatus
-    {
-        get => _renderStatus;
-        private set => SetProperty(ref _renderStatus, value);
-    }
-
-    public string DownloadStatus
-    {
-        get => _downloadStatus;
-        private set => SetProperty(ref _downloadStatus, value);
-    }
-
-    public string ChatInput
-    {
-        get => _chatInput;
-        set
-        {
-            if (SetProperty(ref _chatInput, value))
-            {
-                SendChatCommand.RaiseCanExecuteChanged();
-            }
-        }
-    }
-
-    public bool IsConnected
-    {
-        get => _isConnected;
-        private set
-        {
-            if (SetProperty(ref _isConnected, value))
-            {
-                JoinSessionCommand.RaiseCanExecuteChanged();
-                DisconnectCommand.RaiseCanExecuteChanged();
-                SendChatCommand.RaiseCanExecuteChanged();
-                SimulateFileReceiveCommand.RaiseCanExecuteChanged();
-                SimulateScreenRenderCommand.RaiseCanExecuteChanged();
-            }
-        }
-    }
-
-    public ObservableCollection<string> ActivityLogs { get; } = [];
-
-    public ObservableCollection<string> ChatMessages { get; } = [];
-
-    public ObservableCollection<string> DownloadedFiles { get; } = [];
-
-    public RelayCommand JoinSessionCommand { get; }
-
-    public RelayCommand DisconnectCommand { get; }
-
-    public RelayCommand SendChatCommand { get; }
-
-    public RelayCommand SimulateFileReceiveCommand { get; }
-
-    public RelayCommand SimulateScreenRenderCommand { get; }
-
-    private async Task JoinSessionAsync()
-    {
-        var joinRequest = _sessionClient.CreateJoinRequest(HostAddress, Port, DisplayName);
-        var ack = new AckPacket
-        {
-            SessionId = Guid.NewGuid(),
-            SenderId = "Server",
-            AckCode = AckCodes.SessionJoined,
-            Message = $"{DisplayName} connection acknowledged"
-        };
-
-        await _sessionClient.ApplyJoinAckAsync(ack, HostAddress, Port);
-        IsConnected = true;
-        ConnectionState = "Connected";
-        _logSink.Write($"Session join request created: {joinRequest.DisplayName} -> {joinRequest.TargetAddress}:{joinRequest.TargetPort}");
-        SyncLogs();
-    }
-
-    private async Task DisconnectAsync()
-    {
-        var leavePacket = _sessionClient.CreateLeaveRequest(DisplayName, "User requested disconnect");
-        _logSink.Write($"Session leave request created: {leavePacket.SenderId}, reason={leavePacket.Reason}");
-        await _sessionClient.DisconnectAsync(leavePacket.Reason);
-        IsConnected = false;
-        ConnectionState = "Disconnected";
-        RenderStatus = "Screen rendering stopped";
-        SyncLogs();
-    }
-
-    private void SendChat()
-    {
-        ChatMessages.Insert(0, $"Student: {ChatInput}");
-        _logSink.Write($"Chat message sent: {ChatInput}");
-        ChatInput = string.Empty;
-        SyncLogs();
-    }
-
-    private void SimulateScreenRender()
-    {
-        var packet = new ScreenPacket
-        {
-            FrameIndex = 1,
-            FrameDescription = "Professor sample preview frame"
-        };
-
-        RenderStatus = _screenRenderer.Render(packet);
-        _logSink.Write("Rendered a sample screen frame.");
-        SyncLogs();
-    }
-
-    private async Task SimulateFileReceiveAsync()
-    {
-        var content = Encoding.UTF8.GetBytes("EduStream received sample file");
-        var packet = new FilePacket
-        {
-            FileName = "received-sample.txt",
-            FileSize = content.LongLength,
-            Content = content,
-            Checksum = ChecksumUtility.ComputeSha256(content)
-        };
-
-        var path = await _fileReceiver.SaveAsync(packet, Path.Combine(Path.GetTempPath(), "EduStreamClient"));
-        DownloadedFiles.Insert(0, Path.GetFileName(path));
-        DownloadStatus = $"{Path.GetFileName(path)} saved successfully";
-        _logSink.Write($"Saved sample file to {path}");
-        SyncLogs();
-    }
-
-    private void SyncLogs()
-    {
-        ActivityLogs.Clear();
-        foreach (var entry in _logSink.Snapshot().Reverse())
-        {
-            ActivityLogs.Add(entry);
-        }
-    }
+    public ObservableCollection<string> RightPanelNotes { get; } =
+    [
+        "채팅 목록",
+        "채팅 입력창",
+        "활동 로그",
+        "추가 보조 패널"
+    ];
 }
