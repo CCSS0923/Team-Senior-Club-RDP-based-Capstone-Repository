@@ -230,6 +230,7 @@ public sealed class ClientViewModel : ObservableObject
         try
         {
             await _tcpClient.SendAsync(chatPacket);
+            ChatMessages.Insert(0, $"{DisplayName}: {trimmedMessage}");
             _logSink.Write($"채팅 전송: {trimmedMessage}");
             ChatInput = string.Empty;
             SyncLogs();
@@ -352,6 +353,12 @@ public sealed class ClientViewModel : ObservableObject
     {
         RunOnUiThread(() =>
         {
+            // 자기가 보낸 메시지는 이미 로컬에 표시했으므로 중복 방지
+            if (!packet.IsSystemMessage && packet.Sender == DisplayName)
+            {
+                return;
+            }
+
             var prefix = packet.IsSystemMessage ? "[시스템]" : packet.Sender;
             ChatMessages.Insert(0, $"{prefix}: {packet.Message}");
             _logSink.Write($"채팅 수신: {packet.Sender}");

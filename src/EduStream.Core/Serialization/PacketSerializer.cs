@@ -17,7 +17,8 @@ public sealed class PacketSerializer : IPacketSerializer
 
     public byte[] Serialize<TPacket>(TPacket packet) where TPacket : BasePacket
     {
-        var json = JsonSerializer.Serialize(packet, JsonOptions);
+        // 런타임 타입으로 직렬화하여 하위 클래스 프로퍼티(DisplayName, AckCode 등)가 누락되지 않도록 함
+        var json = JsonSerializer.Serialize(packet, packet.GetType(), JsonOptions);
         return Encoding.UTF8.GetBytes(json);
     }
 
